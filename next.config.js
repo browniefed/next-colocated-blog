@@ -1,4 +1,3 @@
-const React = require("react");
 const copyLinkedFiles = require("remark-copy-linked-files");
 const path = require("path");
 const PATH_NAE = "tutorial_files";
