@@ -24,18 +24,13 @@ export const getPathParam = (path, directory) => {
   return [basename(last, extname(last)), ...all].reverse();
 };
 
-export const getTutorialPaths = async () => {
+export async function getStaticPaths() {
   const tutorialsDirectory = join(process.cwd(), TUTORIAL_PATH);
   const pathResults = await getMDXFiles(tutorialsDirectory);
-  const paths = pathResults?.map((path) => {
+  const tutorialPaths = pathResults?.map((path) => {
     return getPathParam(path, tutorialsDirectory);
   });
-  return paths;
-};
 
-export async function getStaticPaths() {
-  console.log("HERE");
-  const tutorialPaths = await getTutorialPaths();
   const paths = tutorialPaths.map((path) => {
     return {
       params: {
