@@ -1,9 +1,11 @@
-import { join, extname, basename } from "path";
 import dynamic from "next/dynamic";
-import glob from "glob";
 import Layout from "../../layout";
+import glob from "glob";
+import { join, extname, basename } from "path";
 
-const getMDXFiles = (src): Promise<string[]> => {
+export const TUTORIAL_PATH = "content/tutorials";
+
+export const getMDXFiles = (src): Promise<string[]> => {
   return new Promise((resolve, reject) => {
     glob(src + "/**/*.mdx", (err, res) => {
       if (err) {
@@ -16,21 +18,28 @@ const getMDXFiles = (src): Promise<string[]> => {
   });
 };
 
-const TUTORIAL_PATH = "content/tutorials";
-
-const getPathParam = (path, directory) => {
+export const getPathParam = (path, directory) => {
   const bits = path.replace(directory, "").split("/").filter(Boolean).reverse();
   const [last, ...all] = bits;
   return [basename(last, extname(last)), ...all].reverse();
 };
 
-export async function getStaticPaths() {
+export const getTutorialPaths = async () => {
   const tutorialsDirectory = join(process.cwd(), TUTORIAL_PATH);
   const pathResults = await getMDXFiles(tutorialsDirectory);
   const paths = pathResults?.map((path) => {
+    return getPathParam(path, tutorialsDirectory);
+  });
+  return paths;
+};
+
+export async function getStaticPaths() {
+  console.log("HERE");
+  const tutorialPaths = await getTutorialPaths();
+  const paths = tutorialPaths.map((path) => {
     return {
       params: {
-        page: getPathParam(path, tutorialsDirectory),
+        page: path,
       },
     };
   });
@@ -54,8 +63,6 @@ export async function getStaticProps({ params }) {
 }
 
 function BlogArticle({ basePath, meta }) {
-  console.log(`../../${TUTORIAL_PATH}/${basePath}.mdx`);
-
   const Article = dynamic(() => {
     return import(`../../${TUTORIAL_PATH}/${basePath}.mdx`);
   });
