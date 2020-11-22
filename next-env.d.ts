@@ -28,7 +28,8 @@ declare module "@mdx-js/react" {
     | "td"
     | "thematicBreak"
     | "tr"
-    | "ul";
+    | "ul"
+    | "MP4";
   export type Components = {
     [key in ComponentType]?: React.ComponentType<any>;
   };

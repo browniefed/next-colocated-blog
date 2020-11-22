@@ -7,7 +7,14 @@ const withMDX = require("@next/mdx")({
   extension: /\.mdx?$/,
   options: {
     remarkPlugins: [
-      [copyLinkedFiles, { destinationDir, staticPath: `/${PATH_NAE}` }],
+      [
+        copyLinkedFiles,
+        {
+          destinationDir,
+          staticPath: `/${PATH_NAE}`,
+          customSelectors: [["MP4[src]", "src"]],
+        },
+      ],
     ],
   },
 });

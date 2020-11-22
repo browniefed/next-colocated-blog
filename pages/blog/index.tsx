@@ -1,10 +1,8 @@
-import dynamic from "next/dynamic";
-import Layout from "../../layout";
+import Link from "next/link";
 import glob from "glob";
 import { join, extname, basename } from "path";
-import { MDXProvider } from "@mdx-js/react";
-import MP4 from "../../components/mdx/MP4";
 
+const TUTORIAL_PATH = "content/tutorials";
 export const getMDXFiles = (src): Promise<string[]> => {
   return new Promise((resolve, reject) => {
     glob(src + "/**/*.mdx", (err, res) => {
@@ -33,52 +31,47 @@ export const getTutorialPaths = async () => {
   return tutorialPaths;
 };
 
-const TUTORIAL_PATH = "content/tutorials";
-
-export async function getStaticPaths() {
+export async function getStaticProps({ params }) {
   const tutorialPaths = await getTutorialPaths();
-  const paths = tutorialPaths.map((path) => {
+
+  const pathResolves = tutorialPaths.map(async (path) => {
+    const basePath = path.join("/");
+    const meta = (await import(`../../${TUTORIAL_PATH}/${basePath}.mdx`)).meta;
     return {
-      params: {
-        page: path,
-      },
+      meta,
+      basePath,
     };
   });
 
-  return {
-    paths: paths,
-    fallback: false,
-  };
-}
-
-export async function getStaticProps({ params }) {
-  const basePath = params.page.join("/");
-  const meta = (await import(`../../${TUTORIAL_PATH}/${basePath}.mdx`)).meta;
+  const allPaths = await Promise.all(pathResolves);
 
   return {
     props: {
-      basePath,
-      meta,
+      posts: allPaths,
     },
   };
 }
 
-function BlogArticle({ basePath, meta }) {
-  const Article = dynamic(() => {
-    return import(`../../${TUTORIAL_PATH}/${basePath}.mdx`);
-  });
-
+const Index = ({ posts }) => {
   return (
-    <MDXProvider
-      components={{
-        MP4,
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "1100px",
+        margin: "0 auto",
       }}
     >
-      <Layout meta={meta}>
-        <Article />
-      </Layout>
-    </MDXProvider>
+      {posts.map(({ basePath, meta }) => {
+        return (
+          <div>
+            <Link href={`/blog/${basePath}`} passHref>
+              <a>{meta.title}</a>
+            </Link>
+          </div>
+        );
+      })}
+    </div>
   );
-}
+};
 
-export default BlogArticle;
+export default Index;
