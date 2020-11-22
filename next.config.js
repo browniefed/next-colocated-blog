@@ -12,7 +12,7 @@ const withMDX = require("@next/mdx")({
         {
           destinationDir,
           staticPath: `/${PATH_NAE}`,
-          customSelectors: [["MP4[src]", "src"]],
+          selectors: [["MP4[src]", "src"]],
         },
       ],
     ],
