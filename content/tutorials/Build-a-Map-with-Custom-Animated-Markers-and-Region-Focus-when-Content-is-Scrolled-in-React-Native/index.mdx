@@ -1,0 +1,627 @@
+export const meta = {
+    title: "Build a Map with Custom Animated Markers and Region Focus when Content is Scrolled in React Native",
+    description: "We'll build out a map with `react-native-maps` and custom animated map makers. We'll construct an a scroll view that when scrolled will animate the marker that it is associated with. Once scrolling has stopped we will animate the map region and focus on the marker we are looking at.\n\nWe'll use a single `Animated.Value` and use and explain `interpolate` in depth. We'll also show how to use `extrapolate: \"clamp\"` to lock our `outputRange` values.",
+    createdAt: "2017-07-02T01:44:59.771+00:00"
+};
+
+
+    
+ interaction is to have a map with some markers with horizontal scrollable content at the bottom. As you swipe between cards the map will move and highlight on the different markers associated with the content you are looking at. This allows for the user to solely focus on the content and not on a complex map.
+
+
+So lets build this.
+
+![](https://i.imgur.com/2kESliD.gif)
+
+## Start
+
+We'll start with just a basic project that was created by `react-native init`.
+
+Next we'll need to add `react-native-maps` from Airbnb into our project. The `MapView` internal to React Native has been deprecated in favor of [react-native-maps](https://github.com/airbnb/react-native-maps).
+
+To add it run 
+
+```
+npm install react-native-maps --save
+react-native link
+```
+
+This will install the module, and then link all the native pieces for you so that you do not have to.
+
+Our code will look something like this.
+
+```js
+import React, { Component } from "react";
+import {
+  AppRegistry,
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  Animated,
+  Image,
+  Dimensions,
+} from "react-native";
+
+import MapView from "react-native-maps";
+
+const Images = [
+  { uri: "https://i.imgur.com/sNam9iJ.jpg" },
+  { uri: "https://i.imgur.com/N7rlQYt.jpg" },
+  { uri: "https://i.imgur.com/UDrH0wm.jpg" },
+  { uri: "https://i.imgur.com/Ka8kNST.jpg" }
+]
+
+const { width, height } = Dimensions.get("window");
+
+const CARD_HEIGHT = height / 4;
+const CARD_WIDTH = CARD_HEIGHT - 50;
+
+export default class screens extends Component {
+
+  render() {
+    return (
+      <View style={styles.container}>
+        
+      </View>
+    );
+  }
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    position: "absolute",
+    bottom: 30,
+    left: 0,
+    right: 0,
+    paddingVertical: 10,
+  },
+  endPadding: {
+    paddingRight: width - CARD_WIDTH,
+  },
+  card: {
+    padding: 10,
+    elevation: 2,
+    backgroundColor: "#FFF",
+    marginHorizontal: 10,
+    shadowColor: "#000",
+    shadowRadius: 5,
+    shadowOpacity: 0.3,
+    shadowOffset: { x: 2, y: -2 },
+    height: CARD_HEIGHT,
+    width: CARD_WIDTH,
+    overflow: "hidden",
+  },
+  cardImage: {
+    flex: 3,
+    width: "100%",
+    height: "100%",
+    alignSelf: "center",
+  },
+  textContent: {
+    flex: 1,
+  },
+  cardtitle: {
+    fontSize: 12,
+    marginTop: 5,
+    fontWeight: "bold",
+  },
+  cardDescription: {
+    fontSize: 12,
+    color: "#444",
+  },
+  markerWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  marker: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(130,4,150, 0.9)",
+  },
+  ring: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(130,4,150, 0.3)",
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: "rgba(130,4,150, 0.5)",
+  },
+});
+
+```
+
+A few things to point out.
+
+We're just using network images, however this is only so that if you were to build this on a web based solution like [snack.expo](https://snack.expo.io) that it will work. If you have local images you can use those.
+
+```js
+const Images = [
+  { uri: "https://i.imgur.com/sNam9iJ.jpg" },
+  { uri: "https://i.imgur.com/N7rlQYt.jpg" },
+  { uri: "https://i.imgur.com/UDrH0wm.jpg" },
+  { uri: "https://i.imgur.com/Ka8kNST.jpg" }
+]
+```
+
+We are going to define the cards as a product of the height of the screen. So we define the `CARD_HEIGHT` as a quarter of the screen, and the width of the card will be the `CARD_HEIGHT` minus 50 pixels. If you prefer longer cards rather than taller cards feel free to adjust this.
+
+```js
+const { width, height } = Dimensions.get("window");
+
+const CARD_HEIGHT = height / 4;
+const CARD_WIDTH = CARD_HEIGHT - 50;
+```
+## Setup our Animation
+
+We're going to setup our default index, which we will talk about later. This is just that we are focusing on the first item in our `ScrollView`. Also we're setting up our `animation`. This is where we will store our `contentOffset` of our `ScrollView`.
+
+```js
+  componentWillMount() {
+    this.index = 0;
+    this.animation = new Animated.Value(0);
+  }
+```
+
+## Define our Markers/Map Region
+
+We need to define our markers. We're going to put some information onto each marker. Including the coordinates, title, description, and the image. We'll just use the same image.
+```js
+state = {
+    markers: [
+      {
+        coordinate: {
+          latitude: 45.524548,
+          longitude: -122.6749817,
+        },
+        title: "Best Place",
+        description: "This is the best place in Portland",
+        image: Images[0],
+      },
+      {
+        coordinate: {
+          latitude: 45.524698,
+          longitude: -122.6655507,
+        },
+        title: "Second Best Place",
+        description: "This is the second best place in Portland",
+        image: Images[1],
+      },
+      {
+        coordinate: {
+          latitude: 45.5230786,
+          longitude: -122.6701034,
+        },
+        title: "Third Best Place",
+        description: "This is the third best place in Portland",
+        image: Images[2],
+      },
+      {
+        coordinate: {
+          latitude: 45.521016,
+          longitude: -122.6561917,
+        },
+        title: "Fourth Best Place",
+        description: "This is the fourth best place in Portland",
+        image: Images[3],
+      },
+    ],
+    region: {
+      latitude: 45.52220671242907,
+      longitude: -122.6653281029795,
+      latitudeDelta: 0.04864195044303443,
+      longitudeDelta: 0.040142817690068,
+    },
+  };
+```
+
+The region for our map is defined as a central point, with a `delta` . Which will define the initial map region, and zoom level.
+
+
+## Setup The Map
+
+Inside of our container we'll need to add our map.
+
+We'll pass in our `initialRegion` which is our `this.state.region` that we setup before. We'll also pop on `styles.container` which is just `flex: 1` to take up the entire screen. We need to grab a `ref` to the `MapView` so we can animate region changes later.
+
+```js
+<MapView
+  ref={map => this.map = map}
+  initialRegion={this.state.region}
+  style={styles.container}
+>
+
+</MapView>
+```
+
+## Setup The Markers
+
+```js
+  {this.state.markers.map((marker, index) => {
+    return (
+      <MapView.Marker key={index} coordinate={marker.coordinate}>
+        <Animated.View style={[styles.markerWrap]}>
+          <Animated.View style={[styles.ring]} />
+          <View style={styles.marker} />
+        </Animated.View>
+      </MapView.Marker>
+    );
+  })}
+```
+
+Then as a children of our map we will loop over each marker and render it. We need to pass our `coordinate` into the `MapView.Marker` then we can render any React Native elements as the children of the `Marker`. If we do not add children the default marker will render, but we want to render our own custom map markers.
+
+
+## Setup Our ScrollView
+
+We use an `Animated.ScrollView` because we're going to use the `useNativeDriver` option so our animations happen natively.
+
+`horizontal` will make our `ScrollView` operate from left to right. We'll additionally set `showsHorizontalScrollIndicator` to hide the scrollbar. 
+
+Due to use using the `useNativeDriver` option we should set the `scrollEventThrottle` to 1 so that we catch as many events as possible. Finally we'll use an iOS only property and set our `snapToInterval` to the width of our card. This just means that on Android the scroll view will be smooth swiping and have no lock points. Where as on iOS it will lock to each card.
+
+The `Animated.event` is a helper method for us and will automatically update `this.animation` with the `x` value of `contentOffset`. That just means it sets the `this.animation` with how far we've scrolled.
+
+```js
+<Animated.ScrollView
+  horizontal
+  scrollEventThrottle={1}
+  showsHorizontalScrollIndicator={false}
+  snapToInterval={CARD_WIDTH}
+  onScroll={Animated.event(
+    [
+      {
+        nativeEvent: {
+          contentOffset: {
+            x: this.animation,
+          },
+        },
+      },
+    ],
+    { useNativeDriver: true }
+  )}
+  style={styles.scrollView}
+  contentContainerStyle={styles.endPadding}
+>
+
+</Animated.ScrollView>
+```
+
+For our children of the `Animated.ScrollView` we will loop over our markers and render some basic information. An image, title, and description. For the sake of different screen sizes we'll lock each `Text` element to a single line using the `numberOfLines` property and if it exceeds one line it will ellipsize.
+
+```js
+  {this.state.markers.map((marker, index) => (
+    <View style={styles.card} key={index}>
+      <Image
+        source={marker.image}
+        style={styles.cardImage}
+        resizeMode="cover"
+      />
+      <View style={styles.textContent}>
+        <Text numberOfLines={1} style={styles.cardtitle}>{marker.title}</Text>
+        <Text numberOfLines={1} style={styles.cardDescription}>
+          {marker.description}
+        </Text>
+      </View>
+    </View>
+  ))}
+```
+
+## Intermission
+
+Our render function now looks like this. A map view, with an a scroll view sitting on top of it. Each deriving it's content from our `this.state.markers`.
+
+```js
+render() {
+    return (
+      <View style={styles.container}>
+        <MapView
+          ref={map => this.map = map}
+          initialRegion={this.state.region}
+          style={styles.container}
+        >
+          {this.state.markers.map((marker, index) => {
+            return (
+              <MapView.Marker key={index} coordinate={marker.coordinate}>
+                <Animated.View style={[styles.markerWrap]}>
+                  <Animated.View style={[styles.ring]} />
+                  <View style={styles.marker} />
+                </Animated.View>
+              </MapView.Marker>
+            );
+          })}
+        </MapView>
+        <Animated.ScrollView
+          horizontal
+          scrollEventThrottle={1}
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={CARD_WIDTH}
+          onScroll={Animated.event(
+            [
+              {
+                nativeEvent: {
+                  contentOffset: {
+                    x: this.animation,
+                  },
+                },
+              },
+            ],
+            { useNativeDriver: true }
+          )}
+          style={styles.scrollView}
+          contentContainerStyle={styles.endPadding}
+        >
+          {this.state.markers.map((marker, index) => (
+            <View style={styles.card} key={index}>
+              <Image
+                source={marker.image}
+                style={styles.cardImage}
+                resizeMode="cover"
+              />
+              <View style={styles.textContent}>
+                <Text numberOfLines={1} style={styles.cardtitle}>{marker.title}</Text>
+                <Text numberOfLines={1} style={styles.cardDescription}>
+                  {marker.description}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </Animated.ScrollView>
+      </View>
+    );
+  }
+```
+
+## Setup Interpolation Animations
+
+The key here is that we need to setup our interpolations for our marker based upon the width and position inside the scroll view of each card. These 2 interpolations will drive the scale of the marker as well as the opacity of the marker.
+
+We will build an array first by looping over each marker.
+
+We'll need to do 2 interpolations so we'll build out the `inputRange` as a separate variable.
+```js
+      const inputRange = [
+        (index - 1) * CARD_WIDTH,
+        index * CARD_WIDTH,
+        ((index + 1) * CARD_WIDTH),
+      ];
+```
+
+We are defining the `inputRange` as a product of the width and index of the card. Lets break down these 3 values.
+
+1) `(index - 1) * CARD_WIDTH` = What happens when we scroll past this to the left. (INACTIVE)
+2) `index * CARD_WIDTH` = What happens when we are focused on the specific card (ACTIVE)
+3) `(index + 1) * CARD_WIDTH` = What happens when we scroll past on the right side (INACTIVE)
+
+Now lets see what these ranges are when applied to indexes.
+
+If we are at index `0` so the first card. Lets assume `CARD_WIDTH = 200`
+
+`(0 - 1) * 200 = -200`
+`(0) * 200 = 0`
+`(0 + 1) * 200 = 200`
+
+So whenever our `ScrollView` is scrolled no where `0` pixels we will can map that to a value for our scale and opacity. As it scrolls towards `200` it will interpolate a new value of being less focused.
+
+If we are at index `1` so the first card. Lets assume `CARD_WIDTH = 200`
+
+`(1 - 1) * 200 = 0`
+`(1) * 200 = 200`
+`(1 + 1) * 200 = 400`
+
+Now you can see that when we've scrolled a distance of `200` we'll be at our 2nd card (index of 1), and focused on it. However we've set it up so that the first card (index of 0) won't be active.
+
+This will make more sense when we bring in `outputRange`
+
+```js
+      const scale = this.animation.interpolate({
+        inputRange,
+        outputRange: [1, 2.5, 1],
+        extrapolate: "clamp",
+      });
+``` 
+
+Now essentially we want to map the `inputRange` values to our desired `outputRange` values. We want a gradual shrinking of our ring, and a gradual focus so we do gradual steps.
+
+Lets line up the `outputRange` with what we said our `inputRange` mapped to. For us we're looking at the scale right now. 
+
+1) (INACTIVE) => 1
+2) (ACTIVE) => 2.5
+3) (INACTIVE) => 1
+
+So when the `input` value we specified is matched it will interpolate a value in the `outputRange`.
+That can be confusing so lets focus on numbers.
+
+If we are at index `1` so the first card. Lets assume `CARD_WIDTH = 200` again
+
+Our `inputRange` after multiplying would be `[0, 200, 400]`.
+Our `outputRange` would be the `[1, 2.5, 1]`;
+
+So at the start we have a scroll position of `0` which will map to a `1` in our output.
+As we start to scroll above `0` a new scale between `1` and `2.5` will be determined.
+If we are half way there say `100` we would have an output half way between `1` and `2.5`. We can calculate that by doing `((2.5 - 1) / 2) + 1 = 1.75`. The `/2` comes from the difference in the `inputRange` from the current value to the next step. In our case `100/200 = .5` aka `/2`;
+
+Then when we hit a scroll position of `200` our output will be `2.5`. Or `((2.5 - 1) * (200/200)) + 1 = 2.5`.
+
+DON'T FORGET.
+
+Remember our index `0` right? It's `inputRange` was `[-200,0,200]`. You can see that we have an overlap between the `0` and the `200`.
+The `interpolate` call will make a new unique animated value for the range. So when we have scroll a distance of `100` the marker at index `0` will be fading out towards the `200` inactive level. At the same time the marker at index `1` will be fading in and growing for the `0` => `200`.
+
+Once scrolled past towards index `2` the same thing will happen.
+
+I would not worry too much about the math here unless you have specific requirements. A lot of this was just developed by what I thought looked good.
+
+Finally the same goes for our `opacity`.
+
+```js
+      const opacity = this.animation.interpolate({
+        inputRange,
+        outputRange: [0.35, 1, 0.35],
+        extrapolate: "clamp",
+      });
+```
+
+Our inactive opacity will be `.35` gradually grow to `1` so fully visible, then back down to `.35`.
+
+This is our final code for our interpolations.
+```js
+    const interpolations = this.state.markers.map((marker, index) => {
+      const inputRange = [
+        (index - 1) * CARD_WIDTH,
+        index * CARD_WIDTH,
+        ((index + 1) * CARD_WIDTH),
+      ];
+      const scale = this.animation.interpolate({
+        inputRange,
+        outputRange: [1, 2.5, 1],
+        extrapolate: "clamp",
+      });
+      const opacity = this.animation.interpolate({
+        inputRange,
+        outputRange: [0.35, 1, 0.35],
+        extrapolate: "clamp",
+      });
+      return { scale, opacity };
+    });
+```
+
+DON'T FORGET THE `extrapolate: "clamp",`!
+
+This will clamp the values of the `outputRange` at what you've specified. With out the `clamp` the `interpolate` will calculate the rate of change and keep applying it.
+
+So essentially our `opacity` won't stop at `.35` it'll continue down to `0`. Same goes for the scale. It won't stop at `1` it will continue down to `0` on both sides. Roughly 2 markers would be visible at one time.
+
+Without the `extrapolate: "clamp"` it would look something like.
+
+![](https://i.imgur.com/mGARoLO.gif)
+
+Inside of our marker code we need to build out the dynamic marker styling. We will pass our `scale` interpolation into the scale transform, and our `opacity` interpolation into opacity. Then apply those to their specific views.
+
+The `opacityStyle` goes on the outer view since we want the `opacity` to effect the expanding ring as well. Then we'll apply our scale to the ring.
+```js
+{this.state.markers.map((marker, index) => {
+  const scaleStyle = {
+    transform: [
+      {
+        scale: interpolations[index].scale,
+      },
+    ],
+  };
+  const opacityStyle = {
+    opacity: interpolations[index].opacity,
+  };
+  return (
+    <MapView.Marker key={index} coordinate={marker.coordinate}>
+      <Animated.View style={[styles.markerWrap, opacityStyle]}>
+        <Animated.View style={[styles.ring, scaleStyle]} />
+        <View style={styles.marker} />
+      </Animated.View>
+    </MapView.Marker>
+  );
+})}
+```
+
+You can see what we have built. As we slowly drag from the first position to the second position we can watch as the first ring slowly fades/shrinks and at the same time the 2nd ring will fade in and grow.
+
+![](https://i.imgur.com/tiYx0ZM.gif)
+
+## Animate Region Changes
+
+Sometimes the coordinate for the item may be out of range, or you want to focus the map to the center of the thing you are looking at.
+
+We'll need to attach a listener to our animation so we can get access to the scroll value. With the scroll value we can determine which index we are looking at and then get the coordinates to focus on.
+
+```js
+this.animation.addListener(({ value }) => {
+
+})
+```
+
+Next we calculate the index that we are on and do some checks to make sure we are within our marker ranges and correct if we've gone too far out of bounds.
+
+```js
+      let index = Math.floor(value / CARD_WIDTH + 0.3); // animate 30% away from landing on the next item
+      if (index >= this.state.markers.length) {
+        index = this.state.markers.length - 1;
+      }
+      if (index <= 0) {
+        index = 0;
+      }
+```
+
+The next step is to animate. We don't want to animate immediately because if we scroll quickly we don't want to have a janky focus from one region to the next, we want a smooth transition to final region.
+
+We should just use a debounce here but I spun up a quick ghetto method. Anytime we scroll we clear the timeout, then immediately set another timeout for 10 milliseconds from now. If we stop scrolling our `setTimeout` which actually execute.
+
+Then we need to see if we are at a different region otherwise there is no reason to animate. We do that by saving off the current index we are at to `this.index`. If it's different we access our map ref that we set at `this.map` and then call the `animateToRegion`.
+
+If you remember our region was a central `latitude/longitude` so we'll just set our coordinates to our marker we want to focus on and use the same `latitudeDelta/longitudeDelta` that we started with.
+```js
+clearTimeout(this.regionTimeout);
+      this.regionTimeout = setTimeout(() => {
+        if (this.index !== index) {
+          this.index = index;
+          const { coordinate } = this.state.markers[index];
+          this.map.animateToRegion(
+            {
+              ...coordinate,
+              latitudeDelta: this.state.region.latitudeDelta,
+              longitudeDelta: this.state.region.longitudeDelta,
+            },
+            350
+          );
+        }
+      }, 10);
+```
+
+Our final code looks like this.
+```js
+componentDidMount() {
+    // We should detect when scrolling has stopped then animate
+    // We should just debounce the event listener here
+    this.animation.addListener(({ value }) => {
+      let index = Math.floor(value / CARD_WIDTH + 0.3); // animate 30% away from landing on the next item
+      if (index >= this.state.markers.length) {
+        index = this.state.markers.length - 1;
+      }
+      if (index <= 0) {
+        index = 0;
+      }
+
+      clearTimeout(this.regionTimeout);
+      this.regionTimeout = setTimeout(() => {
+        if (this.index !== index) {
+          this.index = index;
+          const { coordinate } = this.state.markers[index];
+          this.map.animateToRegion(
+            {
+              ...coordinate,
+              latitudeDelta: this.state.region.latitudeDelta,
+              longitudeDelta: this.state.region.longitudeDelta,
+            },
+            350
+          );
+        }
+      }, 10);
+    });
+  }
+```
+
+## Styling
+
+One thing I didn't cover was our styling. This can be analyzed by you as the main focus of this tutorial was interpolation and animation.
+
+## Final
+
+Hopefully you learned a little bit about `interpolate` and how you can do powerful animations with it. This will only work on iOS, the ring styling and such would need to be modified since Android doesn't support `overflow: visible` yet.
+
+Check out the [Live Demo](https://snack.expo.io/H1zu3i-NZ) or the [Final Code](https://github.com/browniefed/map_animated_scrollview) here.
+
+
+![](https://i.imgur.com/al2QeN1.gif)

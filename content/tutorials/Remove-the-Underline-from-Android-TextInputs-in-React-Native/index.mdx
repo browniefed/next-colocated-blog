@@ -1,0 +1,64 @@
+export const meta = {
+    title: "Remove the Underline from Android TextInputs in React Native",
+    description: "TextInputs on React Native receive the native defaults. In general this is ideal because it's how native the native components look however on the Android platform this takes the form of a dark underline.",
+    createdAt: "2017-06-26T18:04:28.495563+00:00"
+};
+
+
+    
+## Remove The Underline Color on Android TextInput in React Native
+
+TextInputs on React Native receive the native defaults. In general this is ideal because it's how native the native components look however on the Android platform this takes the form of a dark underline.
+
+![](https://i.imgur.com/dSoNEjF.png)
+
+This is may not be the styling that you want. To change or remove the underline we need to use the `underlineColorAndroid` prop. This is only necessary for Android as the iOS `TextInput` comes relatively unstyled.
+
+This can be set to any color, which includes transparent. To remove the line add `underlineColorAndroid="transparent"` to your `TextInput`.
+
+Your input code will look like `<TextInput underlineColorAndroid="transparent" />`
+
+The result
+
+![](https://i.imgur.com/VkDPIeL.png)
+
+Instead of `transparent` we can use any hex color, rgb, or text color that is standard on the web. For example `underlineColorAndroid="#ff0000"`, `underlineColorAndroid="red"`, or `underlineColorAndroid="rgb(255,0,0)"`
+
+This would produce 
+
+![](https://i.imgur.com/jRS9Vhn.png)
+
+However typical usage is going to use `underlineColorAndroid="transparent"` and then applying a desired border color and other styling.
+
+
+```js
+export default class dailytest extends Component {
+  render() {
+    return (
+      <View style={styles.container}>
+        <TextInput 
+          value="This is some text"
+          style={styles.input}
+          underlineColorAndroid="transparent"
+        />
+      </View>
+    );
+  }
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  input: {
+    width: 200,
+    height: 50,
+    borderWidth: 1,
+    borderColor: "red",
+  }
+});
+```
+
+![](https://i.imgur.com/h2CQlQl.png)

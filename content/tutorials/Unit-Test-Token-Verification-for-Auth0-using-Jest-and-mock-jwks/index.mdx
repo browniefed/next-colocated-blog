@@ -1,0 +1,185 @@
+export const meta = {
+    title: "Unit Test Token Verification for Auth0 using Jest and mock-jwks",
+    description: "Testing authentication can be difficult, especially with many 3rd party providers like Auth0. We'll show how to use Jest and mock-jwks to test out your authentication to create fast unit tests with out hacks.",
+    createdAt: "2020-02-29T23:32:40.226687+00:00"
+};
+
+
+    
+## Introduction
+
+Testing out authentication in your application is crucial. When integrating with Auth0 it becomes more difficult. You aren't able to generate the tokens you want. There is rate limiting involved for their API. It's also not something they should be concerned with. Your implementation should be handled by yourself.
+
+For unit testing to be quick we should be able to rapidly spin up valid tokens, invalid tokens, expired tokens, etc to test out our authentication layer. One handy library for this is [mock-jwks](https://github.com/Levino/mock-jwks).
+
+This will mock calls to the JWK well knowns endpoint, as well as manage signing and generating the tokens for us. Basically it will pretend to be Auth0 for us
+
+For this tutorial we'll also assume to use babel so we can do stuff like use `import`.
+
+Read more about why RS256 and using JWKs is better than just random signing keys [https://auth0.com/blog/navigating-rs256-and-jwks/](https://auth0.com/blog/navigating-rs256-and-jwks/)
+
+## Code to Verify JWT
+
+First lets setup the code that checks if the token is valid. We'll need the `jsonwebtoken` library and `jwks-rsa` library. Both are from Auth0.
+
+```sh
+yarn add jsonwebtoken jwks-rsa
+```
+
+We'll import and create a `jwksClient`. We will then provide it our url for our applications JWKS. This is the url that will have our signing keys to verify that a token is from the proper Auth0 app but not provide private keys that allow new tokens to be signed.
+
+```js
+import jwt from "jsonwebtoken";
+import jwksClient from "jwks-rsa";
+
+const client = jwksClient({
+  jwksUri: "https://MYAUTH0APP.auth0.com/.well-known/jwks.json",
+});
+```
+
+You may have something along these lines. We will need our `jwt.verify` call to be asynchronous as we will need to load up the `JWKS`. Rather than use callbacks we wrap it in a promise so we can easily work with async/await.
+
+We receive a `token` to verify, a `getKey` callback which we'll hear about in a second, and then we provide our algorithm, and a callback to deal with the returned error or decoded token.
+
+```js
+export const verifyAuth0Token = async token => {
+  return new Promise((resolve, reject) => {
+    jwt.verify(token, getKey, { algorithms: ["RS256"] }, (err, decoded) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      resolve(decoded);
+    });
+  });
+};
+```
+
+The `getKey` is a function that the `jsonwebtoken` library will call with a header, and a callback to tell it that we failed, or successfully loaded up the signing key.
+
+Using our `jwks-rsa` library we ask it to go retrieve our signing key for a specific `kid`. The `kid` is a unique identifier for the key. The `jwks.json` that we load from Auth0 will have a matching signing key for our `kid`. So we need the `kid` to know which key to use to check if our token is valid.
+
+```js
+const getKey = (header, callback) => {
+  client.getSigningKey(header.kid, function(err, key) {
+    if (err) {
+      callback(err);
+      return;
+    }
+    const signingKey = key.getPublicKey();
+
+    callback(null, signingKey);
+  });
+};
+```
+
+Finally we get our public signing key a give the `callback` a call with the key. This is all great, but mocking this or getting real tokens could be challenging.
+
+## Setting up the Environment
+
+So lets setup our jest environment so we can mock this flow and test out our authentication.
+
+First we need to install a few libraries. Most are jest related except `mock-jwks` and `nock`. Nock mocks HTTP requests, and `mock-jwks` generates our signing keys and tokens, and uses nock to return the responses.
+
+```sh
+yarn add @babel/core @babel/preset-env babel-jest jest mock-jwks nock --dev
+```
+
+This is our `babel.config.js`.
+
+```js
+module.exports = {
+  presets: [
+    [
+      "@babel/preset-env",
+      {
+        targets: {
+          node: "current",
+        },
+      },
+    ],
+  ],
+};
+```
+
+## Setting up Jest Tests
+
+With `jest` installed we can edit our `package.json` to have a script to run our tests. Something like
+
+```js
+ "scripts": {
+    "test": "jest"
+  }
+```
+
+In a `__tests__` directory we can create a test that matches what Jest will run. In our case we called it `auth.test.js`.
+
+We need to initiate `mock-jwks`. So we call it with the path of our Auth0 application. `https://MYAUTH0APP.auth0.com/`. The path to the url for the `jwks` is the second argument to `createJWKSMock` however it defaults to `well-known/jwks.json` so we don't need to do anything there.
+
+Before each test we'll run our `jwks-mock` listener, and we'll also stop it after to each test.
+
+```js
+import { verifyAuth0Token } from "../index";
+import createJWKSMock from "mock-jwks";
+import { TokenExpiredError } from "jsonwebtoken";
+
+describe("Auth Test", () => {
+  const jwks = createJWKSMock("https://MYAUTH0APP.auth0.com/");
+
+  beforeEach(() => {
+    jwks.start();
+  });
+
+  afterEach(() => {
+    jwks.stop();
+  });
+});
+```
+
+## Writing the Test
+
+Now lets look at what it's like to write a test using `mock-jwks`. We imported our `verifyAuth0Token` function. Now we need to get a token to verify.
+
+The client we created has a `token` method that will accept a payload of data. This is the payload of data you would usually write into the token when calling `jwt.sign` and creating a valid token.
+
+We don't have any data we need so we can just pass in an empty object for now and get back a valid token.
+
+We call our `verifyAuth0Token` call, and expect the data we get back to match. The reason this works is if our `jwt.verify` call receives an invalid token it will throw an error.
+
+```js
+it("should verify the token", async () => {
+  const token = jwks.token({});
+
+  const data = await verifyAuth0Token(token);
+
+  expect(data).toEqual({});
+});
+```
+
+So in order to test out a thrown error in Jest with async an easy method is to use the `expect.assertions` call and a try/catch.
+
+We say that we expect exactly 1 assertion. That assertion will be in the catch. If the token were to be valid for some reason we'd get an error because the `catch` would never be run and we'd never get the 1 assertion we require.
+
+We pass in an `exp: 0` to our token. It doesn't really matter when the token expires as we're just testing that it catches expired tokens as invalid.
+
+In our `catch` we can expect that we should receive an error, but we can be even more specific and expect a `TokenExpiredError`.
+
+```js
+it("should be an invalid token", async () => {
+  expect.assertions(1);
+  const token = jwks.token({
+    exp: 0,
+  });
+
+  try {
+    const data = await verifyAuth0Token(token);
+  } catch (error) {
+    expect(error).toEqual(new TokenExpiredError("jwt expired"));
+  }
+});
+```
+
+## Conclusion
+
+With `mock-jwks` we can spin up unit tests with valid, invalid, and any payload we want without round tripping to a server. So our tests stay fast so we can unit test appropriately. Additionally we don't have to add any hacks into our code to test it. We just mock how it would work in the real world.

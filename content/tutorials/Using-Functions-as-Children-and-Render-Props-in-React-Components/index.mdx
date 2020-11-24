@@ -1,0 +1,220 @@
+export const meta = {
+    title: "Using Functions as Children and Render Props in React Components",
+    description: "We'll explore the concept behind child function components and how to add dynamic return values and hiding state management inside the component. Then we'll explore how to setup functional render props that allow for complex components with simple APIs. Finally we'll show how these 2 concepts can compose together like any other React component.",
+    createdAt: "2017-06-26T18:04:28.495563+00:00"
+};
+
+
+    
+## React Child Function
+
+React allows for you to specify a function as a child, which `children` is just a normal prop so it is equivalent to a render callback.
+
+Lets take a look at what this all looks like.
+
+```js
+render() {
+    return (
+      <div>
+        <LoadContent>
+          {
+            ({ loading }) => <span>{loading}</span>
+          }
+        </LoadContent>
+      </div>
+    )
+  }
+```
+Here we are using the `LoadContent` component, passing in a function, and then returning some content.
+
+This only works because our `LoadContent` understands how to deal with `children` when it's a function.
+
+Our `LoadContent` component would look something like this. It's a fake example but it's demonstrating a point.
+
+```js
+class LoadContent extends Component {
+  state = {
+    loading: true,
+  };
+
+  componentDidMount() {
+    setTimeout(() => {
+      this.setState({
+        loading: false,
+      });
+    }, 500);
+  }
+
+  render() {
+    return (
+      <div>
+        {this.props.children({
+          ...this.props,
+          ...this.state,
+        })}
+      </div>
+    );
+  }
+}
+```
+
+The `LoadContent` component is able to manage all the state without leaking it's logic into any other component. 
+
+This allows for some very powerful declarative work to happen. You can now declare your data dependencies and use them across your application. Dynamic return values become easy because you are just operating with in a javascript function.
+
+Your outer components don't need to manage state. Additionally your other components then receive that data as props, which helps with reusing the component across files, as well as being easier to test.
+
+Lets take a look at another example. Say we wanted to load some data 
+
+```js
+class LoadContent extends Component {
+  state = {
+    loading: true,
+    error: false,
+    data: [],
+  };
+
+  componentDidMount() {
+    fetch(this.props.url)
+      // we should check status code here and throw for errors so our catch will work.
+      .then(res => res.json())
+      .then((data) => this.setState({ data, loading: false }))
+      .catch((err) => this.setState({ loading: false, error: true }))
+  }
+
+  render() {
+    return (
+      <div>
+        {this.props.children({
+          ...this.props,
+          ...this.state,
+        })}
+      </div>
+    );
+  }
+}
+```
+
+Now we have a generic `LoadContent` component. We can pass in a `url` that will be called, converted to JSON. Once the ajax call is returned we can set error/loading/data to appropriate values.
+
+We would use the component like so
+
+```js
+<LoadContent url="https://yourendpoint.com">
+  {
+    ({ loading, error, data }) => {
+
+      if (loading) return <span>Loading...</span>
+      if (error) return <span>Error loading</span>
+
+      return (
+        <div>
+          {
+            data.map((item) => <div>{item}</div>)
+          }
+        </div>
+      )
+
+    }
+  }
+</LoadContent>
+```
+
+We have our dynamic returns when `loading` is initiated, if an error happens we return an error. Finally if we aren't loading, or don't have an error we'll render our actual content.
+
+This type of component is applicable for times when you need to reload the specific data each time. We aren't caching any of the content, and it isn't shareable. However with this abstraction you could easily persist to redux, or another caching mechanism. 
+
+
+## Render Props
+
+Children as a function is technically a render prop. However render props allow you to define a complex component and expose dynamic abilities.
+
+Lets take a look at an example.
+
+```js
+  render() {
+    return (
+      <div>
+        <ComplexList 
+          data={["1", "2", "3", "4"]}
+          renderHeader={({ loading }) => <span>{loading}</span>}
+          renderListItem={(item) => <div>{item}</div>}
+        >
+          <div>Some data</div>
+        </ComplexList>
+      </div>
+    );
+  }
+```
+
+We have a `ComplexList` that takes some data. It has 2 render callbacks, one for rendering header content, and another for rendering the list items.
+
+The render callbacks allows us to have a styled list and render components to a specific location.
+
+The `renderHeader` being a function allows for the `ComplexList` to define the location logic for where the header is placed. Additionally if there is additional logic like sticky headers, the outer component doesn't need to know anything about the logic required to do so.
+
+The `renderListItem` is a function that is called multiple times with each specific piece of data. Again, with a this type of arrangement if there is additional logic needed to render rows that can be abstracted away. Including wrapping rows with additional `div` tags, styling, etc. This is how many components like `FlatList` in React Native, and `react-virtualized` work.
+
+The implementation would look something like
+
+```js
+class ComplexList extends Component {
+  render() {
+    return (
+      <div>
+        <div className="header">
+          {this.props.renderHeader(this.props)}
+        </div>
+        <div className="footer">
+          {
+            this.props.data.map((item) => this.props.renderListItem(item))
+          }
+        </div>
+        <div className="footer">
+          {this.props.children}
+        </div>
+      </div>
+    );
+  }
+}
+```
+
+We have a complex component where with an external API that's been simplified to a few render callbacks. However we are still able to still use our `children` like normal. 
+
+## Putting It Together
+
+With children as functions we are still able to compose our components like any other React component. We can take our data `LoadContent` component, and plug it into our `ComplexList` component.
+
+```js
+render() {
+  <LoadContent url="https://yourendpoint.com">
+  {
+    ({ loading, error, data }) => {
+
+      if (loading) return <span>Loading...</span>
+      if (error) return <span>Error loading</span>
+
+      return (
+        <ComplexList 
+          data={data}
+          renderHeader={() => <span>{loading ? "Loading..." : "Header Content" }</span>}
+          renderListItem={(item) => <div>{item}</div>}
+        >
+          <div>We have {data.length} items</div>
+        </ComplexList>
+      )
+    }
+  }
+</LoadContent>
+}
+```
+
+## Performance Implications
+
+Be aware that when dealing with children as a function or render callbacks that you will not be able to use `shouldComponentUpdate` if you need to.
+
+The reason is that you are declaring a new function on every render cycle. So if you ever did a shallow compare on props they will always be different.
+
+That being said high performance libraries like `react-motion` use the function as a child paradigm.
+
+Overall it's a way for you to build out complex components with simplified yet dynamic APIs.

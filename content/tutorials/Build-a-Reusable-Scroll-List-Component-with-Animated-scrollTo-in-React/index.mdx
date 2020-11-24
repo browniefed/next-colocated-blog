@@ -1,0 +1,391 @@
+export const meta = {
+    title: "Build a Reusable Scroll List Component with Animated scrollTo in React",
+    description: "We'll show how to build a reusable `ScrollView` and `ScrollElement` component without adding any additional DOM elements. We'll take advantage of `React.cloneElement`, `React.Children.only`,`findDOMNode`, and `context` to build a registry of scrollable elements in the list. Then we'll use `ref` on the `ScrollView` to expose a way to animate to any item at any scroll position in the list.",
+    createdAt: "2017-06-26T22:16:02.547062+00:00"
+};
+
+
+    
+## Intro
+
+It is common in applications to have a scrollable list of content. Depending on other interactions you may want to programmatically scroll to a specific list item. This can occur throughout many areas in your application, and re-building this for everything is unnecessary.
+
+Additionally we don't want our reusable component to add any additional markup. The reason being that some people have very specific styling and adding additional markup may effect that styling.
+
+What are we building? Well something like this. Don't mind the ugly styling, this just a non-styled demo. We'll primarily focus on building this out as a reusable component.
+
+![](http://i.imgur.com/quuHXa7.gif)
+
+
+## Setup
+
+We're going to start by setting a scrollable list. We have some random data containing images and a name. 
+
+This will require some CSS. Our CSS will have an `app` class. This will just constrain our application to a specific width and center it.
+
+The important class is the `scroller` class. We have a height, and `overflow: auto`. Whenever the inner content of the div with `scroller` grows beyond the visible height it will add a scrollbar. In our case anytime our content is more than `300px` it will add the scrollbar.
+
+```
+.app {
+  width: 350px;
+  margin: 0 auto;
+}
+
+.scroller {
+  margin: 0 auto;
+  height: 300px;
+  width: 300px;
+  overflow: auto;
+}
+
+.item {
+  margin: 30px 0;
+}
+```
+
+Our starting application code will just be a few divs, with our items being mapped over and rendering our items.
+
+```js
+import React, { Component } from "react";
+import "./App.css";
+
+import items from "./data";
+
+class App extends Component {
+  render() {
+    return (
+      <div className="app">
+          <div className="scroller">
+            {items.map(({ name, image }) => {
+              return (
+                  <div className="item">
+                    <img src={image} />
+                    {name}
+                  </div>
+              );
+            })}
+          </div>
+      </div>
+    );
+  }
+}
+
+export default App;
+```
+
+
+
+![](http://i.imgur.com/OKIzP6J.png)
+
+
+## Making the ScrollView
+
+To avoid adding additional markup we'll just return `this.props.children`, and use `React.Children.only`. When using `React.Children.only` it will throw an error when attempting to pass in multiple children.
+```js
+import React, { Component } from 'react';
+import PropTypes from "prop-types";
+
+class ScrollView extends Component {
+  render() {
+    return (
+      React.Children.only(this.props.children)
+    );
+  }
+}
+```
+
+Because we'll use `context` we'll need `PropTypes`. They have since been deprecated from the core of React and moved into a separate package called `prop-types`.
+
+So we'll need to run `npm install prop-types`. Then import it into our file.
+
+```js
+import React, { Component } from 'react';
+import PropTypes from "prop-types";
+```
+
+Now we'll setup our child context. We have to specify the type of data we are passing down and React will verify that the correct data types are being passed.
+
+```js
+class ScrollView extends Component {
+  static childContextTypes = {
+    scroll: PropTypes.object,
+  }
+  render() {
+    return (
+      React.Children.only(this.props.children)
+    );
+  }
+}
+```
+
+Now that we are specifying a `scroll` context for our children to use. We will setup `register` and `unregister` functions to pass down on our `scroll` object.
+
+Our `register` will take a `name` and `ref` to a component that we can scroll to. Then our `unregister` will be called to remove an element when an item is removed from a list.
+
+Finally we need to setup `getChildContext` to define the context for our child elements to get access to.
+
+```js
+class ScrollView extends Component {
+  static childContextTypes = {
+    scroll: PropTypes.object,
+  }
+  register = (name, ref) => {
+    this.elements[name] = ref;
+  }
+  unregister = (name) => {
+    delete this.elements[name];
+  }
+  getChildContext() {
+    return {
+      scroll: {
+        register: this.register,
+        unregister: this.unregister
+      }
+    }
+  }
+  render() {
+    return (
+      React.Children.only(this.props.children)
+    );
+  }
+}
+```
+
+Now we're going to need to make a `ScrollElement` component to register itself with our `ScrollView`.
+
+## Making our ScrollElement
+
+Once again because we don't want to add additional markup we'll use the `React.cloneElement` call. This will allow us to clone an element and add additional properties onto it.
+
+In our case we need to add the `ref` prop. This will allow us to eventually get access to the DOM node so that we can scroll to it.
+
+We use the callback ref style of ref because this will allow multiple refs to be used if there are multiple clone elements called, or if a ref is defined on the component.
+
+```js
+class ScrollElement extends Component {
+  render() {
+    return (
+      React.cloneElement(this.props.children, {
+        ref: ref => this._element = ref
+      })
+    );
+  }
+}
+```
+
+Next up we need to grab the `scroll` object we defined on context. We won't use `childContextTypes`, we need to use `contextTypes` this time.
+
+Now in our `componentDidMount` we will call our `register` function with the `this._element` ref and also `this.props.name` which is defined by the application using the library we're building.
+
+Finally when the component is unmounting we'll call `unregister` with the name.
+
+```js
+class ScrollElement extends Component {
+  static contextTypes = {
+    scroll: PropTypes.object,
+  }
+  componentDidMount() {
+    this.context.scroll.register(this.props.name, this._element);
+  }
+  componentWillUnmount() {
+    this.context.scroll.unregister(this.props.name);
+  }
+  
+  render() {
+    return (
+      React.cloneElement(this.props.children, {
+        ref: ref => this._element = ref
+      })
+    );
+  }
+}
+```
+
+## Scrolling
+
+You may be moving from a `jQuery` implementation, and might want to be getting rid of a dependency. To avoid using `jQuery` or reimplementing the logic of an animated scroll we can use the library.[scroll-into-view](https://github.com/KoryNunn/scroll-into-view).
+
+It has 0 dependencies besides `raf` to help polyfill `requestAnimationFrame` for older browsers.
+
+We will need to add the `scrollTo` method onto our `ScrollView.
+
+Because we are using `React.cloneElement` we don't know if our child is a `div` or if it's a custom component. Since it could be a custom component we need to use `findDOMNode` from `react-dom` to be able to get access to the actual DOM node.
+
+Then we pass it into our `scrollIntoView` and it will scroll to the element over `500ms` and we set the `align: { top: 0 }` so that it will scroll to the top of the element we are passing in.
+
+```js
+import React, { Component } from 'react';
+import { findDOMNode } from "react-dom";
+import scrollIntoView from "scroll-into-view";
+import PropTypes from "prop-types";
+```
+
+```js
+  scrollTo = (name) => {
+    const node = findDOMNode(this.elements[name]);
+    scrollIntoView(node, {
+      time: 500,
+      align: {
+        top: 0
+      }
+    })
+  }
+```
+
+## Using Our Elements
+
+We will wrap our `div` with the `scroller` class in our `ScrollView`.
+We'll add a `ref` like `<ScrollView ref={scroller => this._scroller = scroller}>` so that we can get access to the `scrollTo` function that we wrote.
+
+Each of our items needs to be wrapped in our `ScrollElement` and then pass in a `name` or any other identifying information that we can use to call our `scrollTo` later.
+
+```js
+{items.map(({ name, image }) => {
+  return (
+    <ScrollElement name={name}>
+      <div className="item">
+        <img src={image} />
+        {name}
+      </div>
+    </ScrollElement>
+  );
+})}
+```
+
+To test out our demo we'll insert some buttons and setup a function to call `scrollTo` on our `_scroller` ref.
+
+```js
+  scrollTo = (name) => {
+    this._scroller.scrollTo(name);
+  }
+```
+
+```js
+{
+  items.map(({name}) => <button onClick={() => this.scrollTo(name)}>{name}</button>)
+}
+```
+
+As you can see here `onClick` will call `scrollTo` on our `App` which will then call the `scrollTo` on our `ScrollView` component. This will then trigger our animated scroll.
+
+Our app code looks like this.
+
+```js
+import React, { Component } from "react";
+import "./App.css";
+import ScrollView, { ScrollElement } from "./scroller";
+
+import items from "./data";
+
+class App extends Component {
+  scrollTo = (name) => {
+    this._scroller.scrollTo(name);
+  }
+  render() {
+    return (
+      <div className="app">
+        {
+          items.map(({name}) => <button onClick={() => this.scrollTo(name)}>{name}</button>)
+        }
+        <ScrollView ref={scroller => this._scroller = scroller}>
+          <div className="scroller">
+            {items.map(({ name, image }) => {
+              return (
+                <ScrollElement name={name}>
+                  <div className="item">
+                    <img src={image} />
+                    {name}
+                  </div>
+                </ScrollElement>
+              );
+            })}
+          </div>
+        </ScrollView>
+      </div>
+    );
+  }
+}
+
+export default App;
+```
+## What it looks like in use
+
+![](http://i.imgur.com/quuHXa7.gif)
+
+
+## Ending
+
+This isn't robust but you can see how to use `context` to pass information from a top level wrapping component to children component and build out a library. Using context means none of our implementation is being leaked to the application code.
+
+[Final Code](https://github.com/browniefed/react-inner-scroll)
+
+
+## Code
+
+```js
+import React, { Component } from 'react';
+import { findDOMNode } from "react-dom";
+import scrollIntoView from "scroll-into-view";
+import PropTypes from "prop-types";
+
+class ScrollView extends Component {
+  static childContextTypes = {
+    scroll: PropTypes.object,
+  }
+  elements = {};
+  register = (name, ref) => {
+    this.elements[name] = ref;
+  }
+  unregister = (name) => {
+    delete this.elements[name];
+  }
+  getChildContext() {
+    return {
+      scroll: {
+        register: this.register,
+        unregister: this.unregister
+      }
+    }
+  }
+  scrollTo = (name) => {
+    const node = findDOMNode(this.elements[name]);
+    scrollIntoView(node, {
+      time: 500,
+      align: {
+        top: 0
+      }
+    })
+  }
+  render() {
+    return (
+      React.Children.only(this.props.children)
+    );
+  }
+}
+
+class ScrollElement extends Component {
+  static contextTypes = {
+    scroll: PropTypes.object,
+  }
+  componentDidMount() {
+    this.context.scroll.register(this.props.name, this._element);
+  }
+  componentWillUnmount() {
+    this.context.scroll.unregister(this.props.name);
+  }
+  
+  render() {
+    return (
+      React.cloneElement(this.props.children, {
+        ref: ref => this._element = ref
+      })
+    );
+  }
+}
+
+export {
+  ScrollElement
+}
+
+export default ScrollView;
+```

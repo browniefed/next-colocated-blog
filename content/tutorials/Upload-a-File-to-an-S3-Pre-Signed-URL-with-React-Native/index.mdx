@@ -1,0 +1,223 @@
+export const meta = {
+    title: "Upload a File to an S3 Pre-Signed URL with React Native",
+    description: "First we'll write an endpoint to create S3 pre-signed upload URLs. Next we'll setup a React Native Camera, and show how to save a captured photo. Finally we'll use `fetch` and `getBlob` to get our image contents and upload them directly to s3.",
+    createdAt: "2020-07-07T04:30:46.344916+00:00"
+};
+
+
+    
+## Introduction
+
+Uploading files to an S3 bucket from React Native or in general can seem tricky. You may even think you have to your server receive the upload and pass it along the S3. However there is a feature with in S3 that allows you to get pre-signed urls.
+
+Pre-signed urls allow for you to create a URL that will allow anyone to upload directly to S3. The uploaded file will go to exactly where your served said it should go, as well as in the specific bucket. So rather than proxying uploads through your own server, they can directly go to S3. This is a super powerful concept, especially for limiting complexity of your server to have to handle potentially large uploads.
+
+## Setup
+
+```bash
+npm install aws-sdk  uuid
+//or
+yarn add aws-sdk uuid
+```
+
+## Create the Signed URL
+
+First off we need to import a few files into our node function. We aren't assuming any sort of backend, you could be using `express`, or cloud function. All we will need is access to 4 different pieces of information for AWS. Your `accessKey`, `secretKey`, the region of your S3 bucket, and finally the bucket you want the stuff to upload into.
+
+What we will need is to import the `S3` module from the `aws-sdk`, also `Credentials` and we'll use `uuid` to generate our file names.
+
+```js
+import S3 from "aws-sdk/clients/s3";
+import { Credentials } from "aws-sdk";
+import { v4 as uuid } from "uuid";
+```
+
+We create our `Credentials` first then pass that to our `S3` instance, as well as the `region` (for example `"us-west-2"`, etc ) and the signature version. The signature version is how you will specify authenticated requests and can be specified in the bucket policy. You can read more about it here <https://docs.aws.amazon.com/AmazonS3/latest/API/bucket-policy-s3-sigv4-conditions.html>
+
+```js
+const access = new Credentials({
+  accessKeyId: process.env.AWS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET,
+});
+
+const s3 = new S3({
+  credentials: access,
+  region: process.env.S3_REGION, //"us-west-2"
+  signatureVersion: "v4",
+});
+```
+
+So we have unique file names we generate a `uuid` and specify how long our link will be active. In this case it is 15 minutes.
+
+Then we call the method `getSignedUrlPromise` on our `s3` instance. We provide it the bucket of where things should go, the `key` which is the file id and a `.jpg` extension.
+
+You can also include folder paths, and additionally be smarter about what type of file to store but this is an example. Also specify the content mime type. So the `.jpg` mime type is `"image/jpeg"`.
+
+Then you would respond to your server request with url. This url can now be uploaded to.
+
+```js
+const fileId = uuid();
+const signedUrlExpireSeconds = 60 * 15;
+
+const url = await s3.getSignedUrlPromise("putObject", {
+  Bucket: process.env.S3_BUCKET,
+  Key: `${fileId}.jpg`,
+  ContentType: "image/jpeg",
+  Expires: signedUrlExpireSeconds,
+});
+
+return res.json({
+  url,
+});
+```
+
+Also if in the end you want to make the upload public and viewable by all you'd provide the `public-read` Acl.
+
+```js
+const url = await s3.getSignedUrlPromise("putObject", {
+  Bucket: process.env.S3_BUCKET,
+  Key: `${fileId}.jpg`,
+  ContentType: "image/jpeg",
+  Acl: "public-read",
+  Expires: signedUrlExpireSeconds,
+});
+```
+
+## Setup Our Camera
+
+Now with our backend call setup we need to setup some React Native. In your application you will likely have a camera from `react-native-camera`. You'll want to capture photos, save them to device and then upload them.
+
+Our Camera setup might look something like this. Where we get a `ref` to the camera so we can tell it to capture our photo.
+
+```js
+const camera = useRef();
+<Camera style={styles.camera} type={Camera.Constants.Type.back} ref={camera} />;
+```
+
+## Take a Picture
+
+Likely there will be a button that calls this function. With our `ref` to the camera we'll take a picture. This will return a reference to a photo. The photo will have an `uri` which is a path to the photo.
+
+This will work but additionally you can save to the device if you follow along.
+
+```js
+const photo = await camera.current.takePictureAsync({
+  quality: 1,
+  exif: true,
+});
+
+// make call to your server
+const res = await requestUpload();
+const data = await res.json();
+await uploadImage(data.url, photo.uri);
+```
+
+Saving to an album is optional, however this can help make it easier to store the images specifically for your app so your app can discover them later and so the user knows where the photos came from.
+
+We can call the `MediaLibrary.createAssetAsync`, this is imported from `import * as MediaLibrary from "expo-media-library";`. However any way that you can get access to the path of the image will work for uploading. You will additionally need to request `CAMERA_ROLL` permissions.
+
+```js
+  const captureImage = async () => {
+    if (camera.current) {
+      const photo = await camera.current.takePictureAsync({
+        quality: 1,
+        exif: true,
+      });
+      const asset = await MediaLibrary.createAssetAsync(photo.uri);
+      const album = await MediaLibrary.getAlbumAsync("AlbumName");
+      if (!album) {
+        await MediaLibrary.createAlbumAsync("AlbumName", asset, false);
+      } else {
+        await MediaLibrary.addAssetsToAlbumAsync(asset, album, false);
+      }
+    }
+```
+
+Once we have our `asset`. We can call our server function we wrote above. This will return some JSON which we can then trigger our upload to the pre-signed URL. Same as with the `photo`.
+
+```js
+// make call to your server
+const res = await requestUpload();
+const data = await res.json();
+await uploadImage(data.url, asset.uri);
+```
+
+## Upload our Image
+
+The operation we specified was the `putObject` call. So for our fetch we need to specify the `PUT` method. The `uploadImage` also takes the `uri` of a file on device which we can turn into a Blob for uploading.
+
+If the `fetch` method is provided a URI that is on device it will return the contents of that file. So in our case we saved off the image, and thus we can grab the image blob contents to upload.
+
+```js
+export const getBlob = async (fileUri) => {
+  const resp = await fetch(fileUri);
+  const imageBody = await resp.blob();
+  return imageBody;
+};
+
+export const uploadImage = async (uploadUrl, data) => {
+  const imageBody = await getBlob(data);
+
+  return fetch(uploadUrl, {
+    method: "PUT",
+    body: imageBody,
+  });
+};
+```
+
+## Digital Ocean Spaces Support
+
+If you want to support Digital Ocean spaces you will need to make some modifications to the code. First you cannot use `credentials` you will need to pass in `accessKeyId` and `secretAccessKey` directly.
+
+Additionally your region will be the region of your space, for example `sfo2` and finally provide the `endpoint` for the Digital Ocean Space. It would look something like this.
+
+```jsx
+const DO_REGION = "sfo2";
+
+const s3 = new AWS.S3({
+  accessKeyId: process.env.AWS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET,
+  region: process.env.S3_REGION,
+  endpoint: `${DO_REGION}.digitaloceanspaces.com`,
+  signatureVersion: "v4",
+});
+```
+
+Uploading the file requires additional header information to be passed along. Including both ACL, content type, and any meta data. So if your signed url request looks like this.
+
+```jsx
+const url = await s3.getSignedUrlPromise("putObject", {
+  Bucket: process.env.S3_BUCKET,
+  Key: `${fileId}.jpg`,
+  ContentType: "image/jpeg",
+  Acl: "public-read",
+  Expires: signedUrlExpireSeconds,
+  meta: {
+    key: "12345",
+    otherInfo: "other_data",
+  },
+});
+```
+
+Uploading the image now needs the meta data in the headers like this. The tags need to be appended with `x-amz` and the meta tags with `x-amz-meta`
+
+```jsx
+export const uploadImage = async (uploadUrl, data) => {
+  const imageBody = await getBlob(data);
+
+  return fetch(uploadUrl, {
+    method: "PUT",
+    body: imageBody,
+    headers: {
+      "Content-Type": "image/jpeg",
+      "x-amz-acl": "public-read",
+      "x-amz-meta-key": "12345",
+      "x-amz-meta-otherInfo": "other_data",
+    },
+  });
+};
+```
+
+## Ending
+
+Now you are all setup to upload an image directly to an S3 bucket without touching your own server. This will work for not just React Native, but any application, even on the web with appropriate CORS setup. Even more so the code can be adjusted to be compatible with DO Spaces, or other S3 compatible storage solutions.

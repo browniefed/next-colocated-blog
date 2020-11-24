@@ -1,0 +1,659 @@
+export const meta = {
+    title: "Create a Youtube Video Page with Animated Video Drag to Corner in React Native",
+    description: "Youtube has a unique video playing experience. It allows you to drag a video to the corner of the screen which continues to play. You can then navigate through the site and select other videos. Additionally if you want to drag it back up you can drag back to the video you were viewing.",
+    createdAt: "2017-07-05T18:45:18.883+00:00"
+};
+
+
+    
+## Intro
+
+Youtube has a unique video playing experience. It allows you to drag a video to the corner of the screen which continues to play. You can then navigate through the site and select other videos. Additionally if you want to drag it back up you can drag back to the video you were viewing.
+
+![](https://i.imgur.com/9Xg58r4.gif)
+
+## Setup
+
+We'll need to install 2 different libraries, `react-native-video` and `react-native-vector-icons`. The video player is the more important one but in order to add some icons we need the icon library.
+
+Run the commands below.
+
+```
+npm install react-native-video react-native-vector-icons --save
+react-native link
+```
+
+Now we'll also need 3 assets. I've linked to them here.
+
+1) [The Video](https://github.com/browniefed/examples/blob/rnvideo/playlist/rnvideo/lights.mp4)
+2) [Channel Icon](https://github.com/browniefed/examples/blob/rnvideo/playlist/rnvideo/icon.png)
+3) [Thumbnail for videos in the playlist](https://github.com/browniefed/examples/blob/rnvideo/playlist/rnvideo/thumbnail.jpg)
+
+
+Download those assets and save them in your directory. You can see in the code below of what we have named them.
+
+This will be our starting code. You can see that we have
+
+```js
+<TouchableOpacity>
+  <Text>Content Below: Click To Reopen Video</Text>
+</TouchableOpacity>
+```
+
+This will be our behind the video content.
+
+```js
+import React, { Component } from "react";
+import {
+  AppRegistry,
+  StyleSheet,
+  Text,
+  View,
+  Image,
+  Dimensions,
+  ScrollView,
+  TouchableOpacity,
+  PanResponder,
+  Animated,
+} from "react-native";
+
+import Video from "react-native-video";
+import Icon from "react-native-vector-icons/FontAwesome";
+
+import Lights from "./lights.mp4";
+import Thumbnail from "./thumbnail.jpg";
+import ChannelIcon from "./icon.png";
+
+export default class rnvideo extends Component {
+    return (
+      <View style={styles.container}>
+        <TouchableOpacity>
+          <Text>Content Below: Click To Reopen Video</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
+
+AppRegistry.registerComponent("rnvideo", () => rnvideo);
+
+```
+
+## Setup The Covering View
+
+We have some content to cover, which means we're going to need a `View` that will contain all of our other content that we can position on top of stuff below.
+
+Our render function will look something like this. We've added a `<View style={StyleSheet.absoluteFill}>` below our other content. 
+We then used the helper method `StyleSheet.absoluteFill` that will apply an `position: "absolute"` as well as `top: 0, left: 0, right: 0, bottom: 0`. This is built into React Native.
+
+```js
+render() {
+  <View style={styles.container}>
+    <TouchableOpacity onPress={this.handleOpen}>
+      <Text>Content Below: Click To Reopen Video</Text>
+    </TouchableOpacity>
+    <View style={StyleSheet.absoluteFill}>
+    </View>
+  </View>
+}
+```
+
+All of our video content will go inside of our `View` that is covering the back content.
+
+
+## Add the Video
+
+Now lets add our `Video`. We need to first calculate the width and height. Our video is `1920x1080`. 
+
+That means that `1080/1920 = .5625` which is the ratio of width to height. So we can take an arbitrary `width` multiply it by `.5625` and get a new height. 
+
+```js
+    const { width, height: screenHeight } = Dimensions.get("window");
+    const height = width * 0.5625;
+```
+We want our video to be across the entire screen so we'll use the `Dimensions.get("window")` function to get the `width`. Then multiply it by our ratio to get the appropriate video height so that there will not be any black bars.
+
+We wrap our `Video` in an `Animated.View` so that we can animate the dragging of the video later. We also want to put the `width` and `height` on the `Animated.View`, then once again use the `StyleSheet.absoluteFill` so that our video is responsive and just covers all the space we have defined.
+
+```js
+render() {
+    const { width, height: screenHeight } = Dimensions.get("window");
+    const height = width * 0.5625;
+
+    return (
+      <View style={styles.container}>
+        <TouchableOpacity onPress={this.handleOpen}>
+          <Text>Content Below: Click To Reopen Video</Text>
+        </TouchableOpacity>
+        <View style={StyleSheet.absoluteFill}>
+          <Animated.View style={[{ width, height }]}>
+            <Video repeat style={StyleSheet.absoluteFill} source={Lights} resizeMode="contain" />
+          </Animated.View>
+        </View>
+      </View>
+    );
+  }
+```
+
+## Add Some Video and Channel Information
+
+
+First thing we need to do is add an `Animated.ScrollView` below our video. We will the give it the style `scrollView`
+
+Our style just looks like 
+```js
+  scrollView: {
+    flex: 1,
+    backgroundColor: "#FFF",
+  },
+```
+
+This will tell the `ScrollView` to take up the rest of the space. Our video is a dynamic height and we just want the `ScrollView` to take up the rest of the space for all our content.
+
+It's important we use a `ScrollView` here so that our content will be able to scrollable because it will contain a lot of content.
+
+
+```js
+render() {
+    const { width, height: screenHeight } = Dimensions.get("window");
+    const height = width * 0.5625;
+
+    return (
+      <View style={styles.container}>
+        <TouchableOpacity onPress={this.handleOpen}>
+          <Text>Content Below: Click To Reopen Video</Text>
+        </TouchableOpacity>
+        <View style={StyleSheet.absoluteFill}>
+          <Animated.View
+            style={[{ width, height }]}
+          >
+            <Video repeat style={StyleSheet.absoluteFill} source={Lights} resizeMode="contain" />
+          </Animated.View>
+          <Animated.ScrollView style={[styles.scrollView]}>
+            
+          </Animated.ScrollView>
+        </View>
+      </View>
+    );
+  }
+```
+
+Lets look at what we want to achieve
+
+![](https://i.imgur.com/hKqQ2uC.png)
+
+You can see here that we want to have a title and some other content. It all looks unique except for the icons. We'll create a reusable component here that we'll call `TouchableIcon`. We'll just give it a name of an icon, and then add the text as the child and put it where we want. 
+
+```js
+const TouchableIcon = ({ name, children }) => {
+  return (
+    <TouchableOpacity style={styles.touchIcon}>
+      <Icon name={name} size={30} color="#767577" />
+      <Text style={styles.iconText}>
+        {children}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+```
+The styles for our `TouchableIcon` will center our icon and the text, and we'll use a little `marginTop` to separate the text from the icon.
+
+```js
+touchIcon: {
+  alignItems: "center",
+  justifyContent: "center",
+},
+iconText: {
+  marginTop: 5,
+},
+```
+
+We would theoretically also want to add an `onPress` function here to execute some sort of comamnd when you press on the button but we won't implement any actual functionality.
+
+
+Now that we have our icon we can render our first chunk of content.
+
+```js
+<View style={styles.padding}>
+  <Text style={styles.title}>Beautiful DJ Mixing Lights</Text>
+  <Text>1M Views</Text>
+  <View style={styles.likeRow}>
+    <TouchableIcon name="thumbs-up">10,000</TouchableIcon>
+    <TouchableIcon name="thumbs-down">3</TouchableIcon>
+    <TouchableIcon name="share">Share</TouchableIcon>
+    <TouchableIcon name="download">Save</TouchableIcon>
+    <TouchableIcon name="plus">Add to</TouchableIcon>
+  </View>
+</View>
+```
+We create a generic `padding` style so that we have consistency through out our view. We increase the title size to `28`.
+
+The important piece is the `likeRow`. We use `flexDirection: "row"` to distribute our `TouchableButtons` in a row, we add some additional padding on left and right. Then we use `    justifyContent: "space-around"` to distribute each of the items with even spacing on each side. Without this flex box property we'd have to manually guess or calculate how far apart to make each button. Using `justifyContent: "space-around"` is the best way to achieve even spacing in a row.
+
+```js
+  title: {
+    fontSize: 28,
+  },
+  likeRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: 15,
+  },
+  padding: {
+    paddingVertical: 15,
+    paddingHorizontal: 15,
+  },
+```
+
+Then we'll add in our channel information. We'll apply the `padding` style so it's consistent with the above content. We'll use the `ChannelIcon` image that we imported in the starting code.
+
+```js
+<View style={[styles.channelInfo, styles.padding]}>
+  <Image
+    source={ChannelIcon}
+    style={styles.channelIcon}
+    resizeMode="contain"
+  />
+  <View style={styles.channelText}>
+    <Text style={styles.channelTitle}>Prerecorded MP3s</Text>
+    <Text>1M Subscribers</Text>
+  </View>
+</View>
+```
+
+Then with our styles we'll add some general styling to our `channelInfo` style with borders on top and bottom. We'll also need to apply `flexDirection: "row"` so things flow in a row. The rest of the styles are just spacing and text styling. We'll also give the `channelIcon` a specific width and height.
+
+```js
+channelInfo: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#DDD",
+    borderTopWidth: 1,
+    borderTopColor: "#DDD",
+  },
+  channelIcon: {
+    width: 50,
+    height: 50,
+  },
+  channelText: {
+    marginLeft: 15,
+  },
+  channelTitle: {
+    fontSize: 18,
+    marginBottom: 5,
+  },
+```
+
+Our combined code now looks like this.
+
+```js
+render() {
+    const { width, height: screenHeight } = Dimensions.get("window");
+    const height = width * 0.5625;
+
+    return (
+      <View style={styles.container}>
+        <TouchableOpacity onPress={this.handleOpen}>
+          <Text>Content Below: Click To Reopen Video</Text>
+        </TouchableOpacity>
+        <View style={StyleSheet.absoluteFill}>
+          <Animated.View
+            style={[{ width, height }]}
+          >
+            <Video repeat style={StyleSheet.absoluteFill} source={Lights} resizeMode="contain" />
+          </Animated.View>
+          <Animated.ScrollView style={[styles.scrollView]}>
+            <View style={[styles.topContent, styles.padding]}>
+              <Text style={styles.title}>Beautiful DJ Mixing Lights</Text>
+              <Text>1M Views</Text>
+              <View style={styles.likeRow}>
+                <TouchableIcon name="thumbs-up">10,000</TouchableIcon>
+                <TouchableIcon name="thumbs-down">3</TouchableIcon>
+                <TouchableIcon name="share">Share</TouchableIcon>
+                <TouchableIcon name="download">Save</TouchableIcon>
+                <TouchableIcon name="plus">Add to</TouchableIcon>
+              </View>
+            </View>
+
+            <View style={[styles.channelInfo, styles.padding]}>
+              <Image
+                source={ChannelIcon}
+                style={styles.channelIcon}
+                resizeMode="contain"
+              />
+              <View style={styles.channelText}>
+                <Text style={styles.channelTitle}>Prerecorded MP3s</Text>
+                <Text>1M Subscribers</Text>
+              </View>
+            </View>
+          </Animated.ScrollView>
+        </View>
+      </View>
+    );
+  }
+```
+
+## Add The Playlist
+
+Again we will add our `padding` style to keep things consistent. Then throw some text on the page to say what videos are playing next. This gives us another chance to create a reusable component. Each of the videos in the playlist will have the same exact structure, so we should make a component out of it.
+
+```js
+<View style={styles.padding}>
+  <Text style={styles.playlistUpNext}>Up next</Text>
+  <PlaylistVideo
+    image={Thumbnail}
+    name="Next Sweet DJ Video"
+    channel="Prerecorded MP3s"
+    views="380K"
+  />
+  {/* Render as many playlist videos as you want here from wherever */}
+</View>
+```
+
+Our component will have a wrapping view, and take some props including the name of the video, channel, number of views, and the image of the channel.
+
+```js
+const PlaylistVideo = ({ name, channel, views, image }) => {
+  return (
+    <View style={styles.playlistVideo}>
+      <Image source={image} style={styles.playlistThumbnail} resizeMode="cover" />
+      <View style={styles.playlistText}>
+        <Text style={styles.playlistVideoTitle}>
+          {name}
+        </Text>
+        <Text style={styles.playlistSubText}>
+          {channel}
+        </Text>
+        <Text style={styles.playlistSubText}>
+          {views} views
+        </Text>
+      </View>
+    </View>
+  );
+};
+```
+
+Then you can see our styling here. Important styles to point out are the `playlistThumbnail` and `playlistText` styles.
+
+ The `playlistThumbnail` has `width: null, height: null` so that our `flex: 1` proprety will actually set the width and height of the image. Then our `playlistText` adds some padding and `flex: 2`.
+
+ Because these sit right next to each other the `playlistText` will take up twice as much space as the image. This just allows us to have dynamic sizing regardless of screensize but keep the same proportions of video to text.
+
+```js
+playlistUpNext: {
+    fontSize: 24,
+  },
+  playlistVideo: {
+    flexDirection: "row",
+    height: 100,
+    marginTop: 15,
+    marginBottom: 15,
+  },
+  playlistThumbnail: {
+    width: null,
+    height: null,
+    flex: 1,
+  },
+  playlistText: {
+    flex: 2,
+    paddingLeft: 15,
+  },
+  playlistVideoTitle: {
+    fontSize: 18,
+  },
+  playlistSubText: {
+    color: "#555",
+  },
+```
+
+## Setup our PanResponder for Dragging
+
+To create interactive content that is draggable and touchable React Native provides `PanResponder`. We will do this in `componentWillMount` so we can attach it before things render.
+
+We need to setup a few properties first.
+
+We will use `this._y` to keep track of the actual animated value so we can offset it and allow for our video to be draggable back to it's original position.
+
+We create `this._animation` so we have an `Animated.Value` to drive our animation. Then we use `addListener` so we can store our value on `this._y`.
+
+```js
+this._y = 0;
+this._animation = new Animated.Value(0);
+this._animation.addListener(({ value }) => {
+  this._y = value;
+})
+```
+
+The first part of a `PanResponder` contains `onStartShouldSetPanResponder`, and `onMoveShouldSetPanResponder` which always return true. This just tells React Native that "yes we want to receive touch events"
+
+Then we will pipe the `dy` (delta y) from the `gestureState`  automatically into our `this._animation` value. The delta y is the change in position from the original point that the finger was put down.
+
+```js
+this._panResponder = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: Animated.event([
+        null,
+        {
+          dy: this._animation,
+        },
+      ]),
+})
+```
+Then we need to do something on the release of the video dragging. If our `dy` is greater than 100. Meaning the user has dragged the video in the `y` direction (towards the bottom) greater than 100 pixels then we will trigger our `Animation` to `300` with a duration of `200ms`. The `300` value will be the value we use in `interpolation` later but it's the threshold that we setup. 
+
+We then need to use the `setOffset` to 300. This will allow the video to stay in the bottom corner. Then when the user comes to drag the video back into position. The `dy` will be `0` and thus our `Animated.Value` will be reset to `0`. But the offset will allow us to keep the video in the corner and allow the user to control the video dragging without things jumping.
+
+If the user didn't drag far enough then we will execute our animated value back to `0` and then set our offset to `0` as well.
+
+Essentially the usage of `setOffset` allows us to set and hold the position of the video and continue to use `dy` so that there is no jumping and drags are fluid.
+
+```js
+onPanResponderRelease: (e, gestureState) => {
+  if (gestureState.dy > 100) {
+    Animated.timing(this._animation, {
+      toValue: 300,
+      duration: 200,
+    }).start();
+    this._animation.setOffset(300);
+  } else {
+    this._animation.setOffset(0);
+    Animated.timing(this._animation, {
+      toValue: 0,
+      duration: 200,
+    }).start();
+  }
+},
+```
+
+
+This is what our complete setup and `PanResponder` code looks like.
+
+```js
+componentWillMount() {
+    this._y = 0;
+    this._animation = new Animated.Value(0);
+    this._animation.addListener(({ value }) => {
+      this._y = value;
+    })
+
+    this._panResponder = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: Animated.event([
+        null,
+        {
+          dy: this._animation,
+        },
+      ]),
+      onPanResponderRelease: (e, gestureState) => {
+        if (gestureState.dy > 100) {
+          Animated.timing(this._animation, {
+            toValue: 300,
+            duration: 200,
+          }).start();
+          this._animation.setOffset(300);
+        } else {
+          this._animation.setOffset(0);
+          Animated.timing(this._animation, {
+            toValue: 0,
+            duration: 200,
+          }).start();
+        }
+      },
+    });
+  }
+```
+
+One final piece is we need to add the `panHandlers` to the `Animated.View` wrapping our video. We spread them on with `{...this._panResponder.panHandlers}`
+
+```js
+<Animated.View
+  style={[{ width, height }]}
+  {...this._panResponder.panHandlers}
+>
+  <Video repeat style={StyleSheet.absoluteFill} source={Lights} resizeMode="contain" />
+</Animated.View>
+```
+
+
+## Setup our Animations and Interpolations
+
+Now that we have our handlers setup, the `Animated.Value` that we have will automatically get updated with the `dy`. We'll need to drive the views with `interpolate`.
+
+
+**IMPORTANT** 
+
+The `300` value that we setup above is as far as you can drag before we determine that you can't drag any further. It's the upper drag limit and it's just an arbitrary number that I chose. It should likely be driven as a percentage of screen height. We will set the top region of our `inputRange` to `300` and `clamp` it.
+
+The first interpolation is `opacity`, which will drive the opacity of the `Animated.ScrollView` as the video is dragged away.
+
+```js
+const opacityInterpolate = this._animation.interpolate({
+  inputRange: [0, 300],
+  outputRange: [1, 0],
+});
+```
+
+The second is going to be used for both the `Video` and the `ScrollView`. To performantly move our views out of the way we will use `translateY`.
+
+For our output we want to move the `Video` to the bottom corner, which is the length of the `ScrollView`. In our case that is `screenHeight` minus the `height` of the video. We'll add `40` as we want it to be slightly offset from the corner.
+
+It is important to set `extrapolate: "clamp"` otherwise as the user drags beyond `300` the `outputRange` will cause the `translateY` property to overshoot our `screenHeight - height + 40` calculation and it will be positioned off screen.
+
+```js
+const translateYInterpolate = this._animation.interpolate({
+  inputRange: [0, 300],
+  outputRange: [0, screenHeight - height + 40],
+  extrapolate: "clamp",
+});
+```
+
+Finally our other 2 interpolations. These `outputRange`s were both selected by trial and error. I chose `.5` for the scale, and then selected the `translateX` by testing out where I wanted the video to be positioned at `.5` scale. The `85` just happens to be positioned offset from the bottom right corner at a scale of `.5`.
+
+```js
+const scaleInterpolate = this._animation.interpolate({
+  inputRange: [0, 300],
+  outputRange: [1, 0.5],
+  extrapolate: "clamp",
+});
+
+const translateXInterpolate = this._animation.interpolate({
+  inputRange: [0, 300],
+  outputRange: [0, 85],
+  extrapolate: "clamp",
+});
+```
+
+Then we'll setup our styles by passing in our interpolations into dynamic style objects. Our `ScrolLView` will get opacity and translateY, and our video will get translateY, translateX, and scale transformation styles.
+
+```js
+const scrollStyles = {
+  opacity: opacityInterpolate,
+  transform: [
+    {
+      translateY: translateYInterpolate,
+    },
+  ],
+};
+
+const videoStyles = {
+  transform: [
+    {
+      translateY: translateYInterpolate,
+    },
+    {
+      translateX: translateXInterpolate,
+    },
+    {
+      scale: scaleInterpolate,
+    },
+  ],
+};
+```
+
+Then we need to apply it to our views.
+
+Our video
+```js
+<Animated.View
+    style={[{ width, height }, videoStyles]}
+    {...this._panResponder.panHandlers}
+  >
+```
+
+Our `ScrollView`
+
+```js
+<Animated.ScrollView style={[styles.scrollView, scrollStyles]}>
+```
+
+## Touching Through Views
+
+The final important piece is to be able to touch through our covering view. We have our
+
+```js
+<View style={StyleSheet.absoluteFill}>
+```
+But because it's covering the content behind we can see it but we won't be able to touch it. In order to fix this we need to add the correct `pointerEvents` property. We'll use the `box-none` property. This indicates that our wrapping view should ignore all touches, but our children and anything else should be able to be touched. It basically will operate as an invisible container.
+
+```js
+<View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+```
+Then for our button behind when it's pressed we will set our `offset` to `0` and animate our animated value back to `0`. This will cause our video to rise from the corner and our `ScrollView` of content to return as well.
+```js
+
+<TouchableOpacity onPress={this.handleOpen}>
+  <Text>Content Below: Click To Reopen Video</Text>
+</TouchableOpacity>
+
+handleOpen = () => {
+    this._animation.setOffset(0);
+    Animated.timing(this._animation, {
+      toValue: 0,
+      duration: 200,
+    }).start();
+}
+```
+
+## The End
+
+There you have it. A draggable video to the corner along with adding the ability to touch content behind our view.
+
+![](https://i.imgur.com/9Xg58r4.gif)
+
+## Code + Demo + Edit Here Live
+
+[Live Demo](https://snack.expo.io/SJPTf254W)
+
+[Code Link](https://github.com/browniefed/examples/tree/rnvideo/playlist)
+
+
