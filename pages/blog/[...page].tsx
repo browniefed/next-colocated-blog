@@ -4,6 +4,7 @@ import glob from "glob";
 import { join, extname, basename } from "path";
 import { MDXProvider } from "@mdx-js/react";
 import MP4 from "../../components/mdx/MP4";
+import CodeBlock from "../../components/mdx/code";
 
 export const getMDXFiles = (src): Promise<string[]> => {
   return new Promise((resolve, reject) => {
@@ -72,6 +73,8 @@ function BlogArticle({ basePath, meta }) {
     <MDXProvider
       components={{
         MP4,
+        pre: (props) => <div {...props} />,
+        code: CodeBlock,
       }}
     >
       <Layout meta={meta}>
